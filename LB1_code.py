@@ -14,7 +14,6 @@ class Neuron:
         self.output_history = []  # История выходных векторов
         
     def activate(self, net: float) -> float:
-        
         if self.act_type == 'threshold':
             # f(net) = { 1, net >= 0; 0, net < 0 } пороговая
             return 1.0 if net >= 0 else 0.0
@@ -32,7 +31,6 @@ class Neuron:
             return 0.5 / ((1 + abs(net)) ** 2)
     
     def forward(self, x: List[int], continuous: bool = False) -> float:
-       
         # Добавляем x0 = 1 для смещения
         x_with_bias = [1.0] + [float(v) for v in x]
         
@@ -276,12 +274,10 @@ def main():
     
     X, targets = generate_truth_table()  # Генерируем таблицу истинности
     print_truth_table(X, targets)
-    
     print("\n1. ОБУЧЕНИЕ НС С ИСПОЛЬЗОВАНИЕМ ВСЕХ КОМБИНАЦИЙ ПЕРЕМЕННЫХ\n") 
     
     neuron1 = run_experiment_full('threshold', X, targets, eta=0.3, max_epochs=30)
     neuron2 = run_experiment_full('type2', X, targets, eta=0.5, max_epochs=30)
-  
     print("\n2. ОБУЧЕНИЕ НС С ИСПОЛЬЗОВАНИЕМ ЧАСТИ КОМБИНАЦИЙ ПЕРЕМЕННЫХ\n")
     
     min_set1, neuron_min1 = find_minimal_set_threshold(X, targets)
