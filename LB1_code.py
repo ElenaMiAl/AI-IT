@@ -7,7 +7,7 @@ class Neuron:
     def __init__(self, activation_type: str = 'threshold'):
        
         #  w = (w0, w1, w2, w3, w4)
-        self.weights = np.zeros(5) # [0,0,0,0,0]
+        self.weights = np.zeros(5) # [0,0,0,0,0] веса проставляем в нулевые значения
         self.act_type = activation_type
         self.loss_history = []  # История ошибок по эпохам
         self.weights_history = []  # История весов
@@ -51,7 +51,6 @@ class Neuron:
     
     def train_step(self, x: List[int], target: int, eta: float) -> float: # Один шаг обучения по правилу Видроу-Хоффа
           
-        # Прямой проход
         x_with_bias = [1.0] + [float(v) for v in x]
         net = sum(w * xi for w, xi in zip(self.weights, x_with_bias))
         out_cont = self.activate(net)
