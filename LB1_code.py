@@ -1,221 +1,238 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations
+import sys
+
 
 def boolean_function(x1, x2, x3, x4):
     return 1 if (not (x2 and x3)) or ((not x1) and x4) else 0
-
+   
 n = 4
 X, targets = [], []
 
-print("Таблица истинности:\n")
-header = " i | " + " ".join([f"x{j+1}" for j in range(n)]) + " | F"
-print(header)
-print("-" * len(header))
-
-for i in range(2**n):
-    x = [(i >> j) & 1 for j in range(n-1, -1, -1)]
-    t = boolean_function(*x)
-    X.append(x)
+for i in range(16):
+    x1 = (i >> 3) & 1  
+    x2 = (i >> 2) & 1  
+    x3 = (i >> 1) & 1  
+    x4 = (i >> 0) & 1  
+    
+    t = boolean_function(x1, x2, x3, x4)
+    X.append([x1, x2, x3, x4])
     targets.append(t)
-    x_str = ' '.join([str(v) for v in x])
-    print(f"{i:2} | {x_str} | {t}")
+    
+    x_str = f"{x1} {x2} {x3} {x4}"
+    print(f"{i+1:2} | {x_str} | {t}")
 
 
 def activate(net, type='1'):
     if type == '1':
         return 1.0 if net >= 0 else 0.0
     else:
-        return 1.0 / (1.0 + np.exp(-net))
+        return 1.0 if net >= 0.5 else 0.0
 
-def derivative(net, out, type='1'):
-    if type == '1':
-        return 1.0
-    else:
-        return out * (1 - out)
 
-def train_neuron(X, targets, eta=0.3, max_epochs=50, act_type='1', verbose=True, file=None):
-    w = np.zeros(5)  
-    loss_history = []
-    weights_history = [w.copy()]
-    outputs_history = []
+def sigma(net):
+    return 0.5 * (net / (1 + abs(net)) + 1)
+
+def dsigma(net):
+    return 1.0 / (2.0 * (1 + abs(net)) ** 2)
+                          
     
-    if verbose and file:
-        file.write(f"\n--- Обучение с {act_type} ФА, η={eta} ---\n")
-        file.write(f"{'Эпоха':>6} | {'Веса w0..w4':^45} | {'Выход (первые 8)':^30} | {'Ошибка':>8}\n")
-        file.write("-" * 95 + "\n")
+def train_neuron(type):
+    w = np.zeros(5)  
+    error_history = np.zeros(50)
+    y_net = np.zeros(16)
+    e = 0
+    delta = np.zeros(5)
+    
+    for ephoch in range(29):
+        
+        print("\nЭпоха", ephoch)
+        print("\n")
+        for i in range(16):
+            net = round((w[0] + w[1]*X[i][0] + w[2]*X[i][1] + w[3]*X[i][2] + w[4]*X[i][3]), 3)
+            if type == '2':
+                net = sigma(net)
+            y = activate(net, type)
+            y_net[i] = y
+            t = targets[i]
+            error = t - y
+            if error != 0:
+                error_history[e] = error_history[e] + 1
+
+                for j in range(5):
+                    
+                    if j == 0:
+                        if type == '1':
+                            delta[0] = delta[0] + 1 * 0.3 * error
+                        else:
+                            delta[0] = round((delta[0] + 1 * 0.3 * error * dsigma(net)), 4)
+                    else:
+                        if type == '1':
+                            delta[j] = delta[j] + 0.3 * error * X[i][j-1]
+                        else:
+                            delta[j] = round((delta[j] + 0.3 * error * X[i][j-1] * dsigma(net)), 4)
+                    
+            w = delta
+        print("Суммарная ошибка E = ", error_history[e])    
+        e = e + 1 
+        print("Вектор весов W = ", delta)
+        print("Выходной вектор = ", y_net)
+        
+    return error_history
+
+def test_full_set(w, X, targets, type):
+    
+    for i in range(len(X)):
+        net = w[0] + w[1]*X[i][0] + w[2]*X[i][1] + w[3]*X[i][2] + w[4]*X[i][3]
+        if type == '2':
+                net = sigma(net)
+        y = activate(net, type)
+        if y != targets[i]:
+            return False
+    return True
+
+def train_on_subset(subset_X, subset_targets, X, targets, type, max_epochs=50,verbose=True):
+    
+    w = np.zeros(5)
+    epoch_errors = []
+    epoch_outputs = []
     
     for epoch in range(max_epochs):
         epoch_error = 0
-        epoch_outputs = []
+        epoch_output = []
         
-        for x, t in zip(X, targets):
-            x_bias = [1.0] + x
-            net = sum(w[i] * x_bias[i] for i in range(5))
-            out_cont = activate(net, act_type)
-            output = 1.0 if out_cont >= 0.5 else 0.0
-            epoch_outputs.append(output)
+        # Обучение на подмножестве
+        for i in range(len(subset_X)):
+            net = w[0] + w[1]*subset_X[i][0] + w[2]*subset_X[i][1] + w[3]*subset_X[i][2] + w[4]*subset_X[i][3]
+            y = activate(net, type)
+            error = subset_targets[i] - y
             
-            delta = t - output
-            epoch_error += abs(delta)
+            if error != 0:
+                if type == '1':
+                    w[0] += 0.3 * error
+                else:
+                    w[0] += 0.3 * error*dsigma(net)
+                    
+                for j in range(1, 5):
+                    if type == '1':
+                            w[j] += 0.3 * error * subset_X[i][j-1]
+                    else:
+                            w[j] += 0.3 * error * subset_X[i][j-1]*dsigma(net)
+        
+        all_outputs = []
+        for i in range(len(X)):
             
-            if abs(delta) > 1e-6:
-                df = derivative(net, out_cont, act_type)
-                for i in range(5):
-                    w[i] += eta * delta * df * x_bias[i]
+            net = w[0] + w[1]*X[i][0] + w[2]*X[i][1] + w[3]*X[i][2] + w[4]*X[i][3]
+            y = activate(net, type)
+            all_outputs.append(y)
+            if y != targets[i]:
+                epoch_error += 1
         
-        loss_history.append(epoch_error)
-        weights_history.append(w.copy())
-        outputs_history.append(epoch_outputs)
-        
-        if verbose and file:
-            w_str = f"[{w[0]:6.3f}, {w[1]:6.3f}, {w[2]:6.3f}, {w[3]:6.3f}, {w[4]:6.3f}]"
-            out_str = ''.join(str(int(o)) for o in epoch_outputs[:16]) 
-            file.write(f"{epoch:6d} | {w_str:45} | {out_str:30} | {epoch_error:8.2f}\n")
+        epoch_errors.append(epoch_error)
+        epoch_outputs.append(all_outputs)
         
         if epoch_error == 0:
-            if verbose and file:
-                file.write("-" * 95 + "\n")
-                file.write(f"Обучение завершено на эпохе {epoch+1}\n")
-            break
+            print(f"бучение завершено на эпохе {epoch}")
+            return True, w, epoch + 1, epoch_errors, epoch_outputs
     
-    return w, loss_history, weights_history, outputs_history
+    return False, None, max_epochs, epoch_errors, epoch_outputs
 
-def find_minimal_set(X, targets, eta=0.3, max_epochs=50, act_type='1', file=None):
-    if file:
-        file.write(f"Поиск минимального набора для {act_type} ФА...\n")
+def find_minimal_set(X, targets,type):
+    indices = list(range(len(X)))
     
-    for size in range(1, 9):
-        for indices in combinations(range(16), size):
-            X_subset = [X[i] for i in indices]
-            t_subset = [targets[i] for i in indices]
+    # Идем от размера 1 до 16, перебирая все комбинации
+    for size in range(1, len(X) + 1):
+        
+        for combo in combinations(indices, size):
+            subset_X = [X[i] for i in combo]
+            subset_targets = [targets[i] for i in combo]
             
-            # Проверяем наличие обоих классов
-            if 0 in t_subset and 1 in t_subset:
-                w, loss, _, _ = train_neuron(X_subset, t_subset, eta, max_epochs, 
-                                            act_type=act_type, verbose=False, file=None)
+            # Пытаемся обучиться на текущей комбинации
+            success, w_final, epochs, epoch_errors, epoch_outputs = train_on_subset(
+                subset_X, subset_targets, X, targets, type, max_epochs=50, verbose=True
+            )
+            
+            if success:
+                print(f"Размер набора: {size}")
+                print(f"Индексы векторов (0-15): {combo}")
+                print("\nВекторы в обучающем наборе:")
+                print(f"{'i':>3} | {'x1 x2 x3 x4':^12} | t")
+                print("-" * 30)
+                for i in combo:
+                    print(f"{i:3} | {X[i][0]} {X[i][1]} {X[i][2]} {X[i][3]} | {targets[i]}")
+                print(f"Итоговые веса [w0, w1, w2, w3, w4]: {np.round(w_final, 4)}")
                 
-                if loss[-1] == 0:
-                    if file:
-                        file.write(f"    Найден набор из {size} векторов!\n")
-                        file.write(f"    Индексы: {indices}\n")
-                        file.write(f"    Векторы (x1,x2,x3,x4) -> F:\n")
-                        for idx in indices:
-                            file.write(f"      {X[idx]} -> {targets[idx]}\n")
-                        file.write(f"    Эпох: {len(loss)}\n")
-                        file.write(f"    Веса: [{w[0]:.3f}, {w[1]:.3f}, {w[2]:.3f}, {w[3]:.3f}, {w[4]:.3f}]\n")
-                    return indices, w, loss
+                return combo, w_final, epoch_errors, epoch_outputs
     
-    if file:
-        file.write(f"Минимальный набор не найден\n")
-    return None, None, None
+    return None, None, None, None
 
+def save_output_to_file(filename="training_results.txt"):
+    
+    original_stdout = sys.stdout
+    
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            sys.stdout = f
+            
+            print("="*80)
+            print("РЕЗУЛЬТАТЫ ОБУЧЕНИЯ НЕЙРОНОВ")
+            print("="*80)
+            
+            # Вывод таблицы истинности
+            print("\n" + "="*80)
+            print("ТАБЛИЦА ИСТИННОСТИ БУЛЕВОЙ ФУНКЦИИ")
+            print("="*80)
+            for i in range(16):
+                x_str = f"{X[i][0]} {X[i][1]} {X[i][2]} {X[i][3]}"
+                print(f"{i+1:2} | {x_str} | {targets[i]}")
+            
+            # Вывод обучения на полном наборе
+            print("\n" + "="*80)
+            print("ОБУЧЕНИЕ НА ПОЛНОМ НАБОРЕ ДАННЫХ")
+            print("="*80)
+            
+            print("\n" + "-"*80)
+            print("НЕЙРОН ТИПА 1 (ПОРОГОВАЯ ФУНКЦИЯ АКТИВАЦИИ)")
+            print("-"*80)
+            train_neuron('1')
+            
+            print("\n" + "-"*80)
+            print("НЕЙРОН ТИПА 2 (СИГМОИДАЛЬНАЯ ФУНКЦИЯ АКТИВАЦИИ)")
+            print("-"*80)
+            train_neuron('2')
+            
+            # Поиск минимальных наборов
+            print("\n" + "="*80)
+            print("ПОИСК МИНИМАЛЬНЫХ ОБУЧАЮЩИХ НАБОРОВ")
+            print("="*80)
+            
+            print("\n" + "-"*80)
+            print("НЕЙРОН ТИПА 1 (ПОРОГОВАЯ ФУНКЦИЯ АКТИВАЦИИ)")
+            print("-"*80)
+            find_minimal_set(X, targets, '1')
+            
+            print("\n" + "-"*80)
+            print("НЕЙРОН ТИПА 2 (СИГМОИДАЛЬНАЯ ФУНКЦИЯ АКТИВАЦИИ)")
+            print("-"*80)
+            find_minimal_set(X, targets, '2')
+            
+            print("\n" + "="*80)
+            print("ОБУЧЕНИЕ ЗАВЕРШЕНО")
+            print("="*80)
+            
+    finally:
+        sys.stdout = original_stdout
+    
+    print(f"Все результаты сохранены в файл: {filename}")
 
-eta = 0.3
-max_epochs = 50
+# Запускаем алгоритм поиска минимального набора
+#train_neuron('1')
+#train_neuron('2')
 
-with open('lab1_results.txt', 'w', encoding='utf-8') as f:
-    f.write("ЛАБОРАТОРНАЯ РАБОТА №1: ИССЛЕДОВАНИЕ ОДНОСЛОЙНЫХ НС\n")
-    f.write("\nТаблица истинности БФ:\n")
-    header = " i | " + " ".join([f"x{j+1}" for j in range(n)]) + " | F\n"
-    f.write(header)
-    f.write("-" * len(header) + "\n")
-    for i, (x, t) in enumerate(zip(X, targets)):
-        x_str = ' '.join([str(v) for v in x])
-        f.write(f"{i:2} | {x_str} | {t}\n")
-    
-    f.write("\nОБУЧЕНИЕ С ПОРОГОВОЙ ФУНКЦИЕЙ АКТИВАЦИИ\n")
-    w_step, loss_step, weights_step, outputs_step = train_neuron(
-        X, targets, eta, max_epochs, act_type='1', verbose=True, file=f
-    )
-    
-    f.write("\nОБУЧЕНИЕ С СИГМОИДАЛЬНОЙ ФУНКЦИЕЙ АКТИВАЦИИ\n")
-    w_sig, loss_sig, weights_sig, outputs_sig = train_neuron(
-        X, targets, eta, max_epochs, act_type='2', verbose=True, file=f
-    )
-    
-    
-    f.write("\nПОИСК МИНИМАЛЬНОГО ОБУЧАЮЩЕГО НАБОРА\n")
-    min_step = find_minimal_set(X, targets, eta, max_epochs, act_type='1', file=f)
-    min_sig = find_minimal_set(X, targets, eta, max_epochs, act_type='2', file=f)
-    
-    
-    f.write("\nИТОГОВЫЕ РЕЗУЛЬТАТЫ\n")
-    
-    f.write("\nПороговая функция активации:\n")
-    f.write(f"  Эпох обучения: {len(loss_step)}\n")
-    f.write(f"  Финальные веса: w0 = {w_step[0]:.3f}, w1 = {w_step[1]:.3f}, w2 = {w_step[2]:.3f}, "
-          f"w3 = {w_step[3]:.3f}, w4 = {w_step[4]:.3f}\n")
-    
-    f.write("\n Сигмоидальная функция активации:\n")
-    f.write(f"  Эпох обучения: {len(loss_sig)}\n")
-    f.write(f"  Финальные веса: w0 = {w_sig[0]:.3f}, w1 = {w_sig[1]:.3f}, w2 = {w_sig[2]:.3f}, "
-          f"w3 = {w_sig[3]:.3f}, w4 = {w_sig[4]:.3f}\n")
-    
-    if min_step[0]:
-        f.write("\n Минимальный набор (пороговая ФА):\n")
-        f.write(f"  Индексы векторов: {min_step[0]}\n")
-        f.write(f"  Размер набора: {len(min_step[0])}\n")
-        f.write(f"  Эпох обучения: {len(min_step[2])}\n")
-        f.write(f"  Финальные веса: [{min_step[1][0]:.3f}, {min_step[1][1]:.3f}, "
-              f"{min_step[1][2]:.3f}, {min_step[1][3]:.3f}, {min_step[1][4]:.3f}]\n")
-    
-    if min_sig[0]:
-        f.write("\n Минимальный набор (сигмоидальная ФА):\n")
-        f.write(f"  Индексы векторов: {min_sig[0]}\n")
-        f.write(f"  Размер набора: {len(min_sig[0])}\n")
-        f.write(f"  Эпох обучения: {len(min_sig[2])}\n")
-        f.write(f"  Финальные веса: [{min_sig[1][0]:.3f}, {min_sig[1][1]:.3f}, "
-              f"{min_sig[1][2]:.3f}, {min_sig[1][3]:.3f}, {min_sig[1][4]:.3f}]\n")
-    
-print("\nРезультаты сохранены в файл 'lab1_results.txt'")
+#find_minimal_set(X, targets, '1')
 
-plt.figure(figsize=(15, 10))
+#find_minimal_set(X, targets, '2')
 
-plt.subplot(2, 2, 1)
-plt.plot(range(1, len(loss_step)+1), loss_step, 'b-o', linewidth=2, markersize=6, markerfacecolor='white')
-plt.title(f'Пороговая функция активации\n(16 векторов, {len(loss_step)} эпох)')
-plt.xlabel('Эпоха обучения k')
-plt.ylabel('Суммарная ошибка E(k)')
-plt.grid(True, linestyle='--', alpha=0.7)
-plt.xticks(range(0, len(loss_step)+1, max(1, len(loss_step)//5)))
-plt.ylim(-0.5, 16.5)
-plt.xlim(0, len(loss_step))
+save_output_to_file("training_results.txt")
 
-plt.subplot(2, 2, 2)
-plt.plot(range(1, len(loss_sig)+1), loss_sig, 'r-o', linewidth=2, markersize=6, markerfacecolor='white')
-plt.title(f'Сигмоидальная функция активации\n(16 векторов, {len(loss_sig)} эпох)')
-plt.xlabel('Эпоха обучения k')
-plt.ylabel('Суммарная ошибка E(k)')
-plt.grid(True, linestyle='--', alpha=0.7)
-plt.xticks(range(0, len(loss_sig)+1, max(1, len(loss_sig)//5)))
-plt.ylim(-0.5, 16.5)
-plt.xlim(0, len(loss_sig))
-
-if min_step[0]:
-    plt.subplot(2, 2, 3)
-    plt.plot(range(1, len(min_step[2])+1), min_step[2], 'g-o', linewidth=2, markersize=8, markerfacecolor='white')
-    plt.title(f'Минимальный набор (пороговая ФА)\n{len(min_step[0])} векторов, {len(min_step[2])} эпох')
-    plt.xlabel('Эпоха обучения k')
-    plt.ylabel('Суммарная ошибка E(k)')
-    plt.grid(True, linestyle='--', alpha=0.7)
-    plt.xticks(range(0, len(min_step[2])+1, max(1, len(min_step[2])//3)))
-    plt.ylim(-0.5, len(min_step[0]) + 0.5)
-    plt.xlim(0, len(min_step[2]))
-
-if min_sig[0]:
-    plt.subplot(2, 2, 4)
-    plt.plot(range(1, len(min_sig[2])+1), min_sig[2], 'm-o', linewidth=2, markersize=8, markerfacecolor='white')
-    plt.title(f'Минимальный набор (сигмоидальная ФА)\n{len(min_sig[0])} векторов, {len(min_sig[2])} эпох')
-    plt.xlabel('Эпоха обучения k')
-    plt.ylabel('Суммарная ошибка E(k)')
-    plt.grid(True, linestyle='--', alpha=0.7)
-    plt.xticks(range(0, len(min_sig[2])+1, max(1, len(min_sig[2])//3)))
-    plt.ylim(-0.5, len(min_sig[0]) + 0.5)
-    plt.xlim(0, len(min_sig[2]))
-
-plt.tight_layout()
-plt.savefig('lab1_graphs.png', dpi=150, bbox_inches='tight')
-plt.show()
-
-print("Графики сохранены в файл 'lab1_graphs.png'")
