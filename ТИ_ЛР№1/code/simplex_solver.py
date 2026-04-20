@@ -271,4 +271,6 @@ class GameSolver:
 
     def solve_B(self):
         t, T = self._solve('B')
-        return t, T
+        v = 1.0 / T                # цена игры
+        y = t * v                  # оптимальная стратегия B
+        return y, v
