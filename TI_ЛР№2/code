@@ -1,0 +1,83 @@
+import numpy as np
+
+C = np.array([
+    [9, 10, 13],
+    [1, 18, 11],
+    [17, 4, 0]
+], dtype=float)
+
+# Аналитическое решение
+def analytical_solution(C):
+    m, n = C.shape
+    if m != n:
+        raise ValueError("Матрица должна быть квадратной")
+    C_inv = np.linalg.inv(C)
+    u = np.ones(m)
+    denom = u @ C_inv @ u
+    if denom == 0:
+        raise ValueError("Цена игры равна нулю")
+    v = 1.0 / denom
+    x = (u @ C_inv) / denom
+    y = (C_inv @ u) / denom
+    return x, y, v
+
+x_anal, y_anal, v_anal = analytical_solution(C)
+
+
+print("АНАЛИТИЧЕСКОЕ РЕШЕНИЕ")
+print(f"Цена игры = {v_anal:.10f}")
+print(f"A* = ({x_anal[0]:.6f}, {x_anal[1]:.6f}, {x_anal[2]:.6f})")
+print(f"B* = ({y_anal[0]:.6f}, {y_anal[1]:.6f}, {y_anal[2]:.6f})")
+print()
+
+# Метод Брауна-Робинсона
+def brown_robinson_auto(C, eps=0.1, report_interval=1000):
+    m, n = C.shape
+    freqA = np.zeros(m, dtype=int)
+    freqB = np.zeros(n, dtype=int)
+    a, b = 0, 0
+    print("="*110)
+    print(f"{'№ пп':>4} | {'Выбор A':>7} | {'Выбор B':>7} | {'Выигрыш A (x1,x2,x3)':<25} | {'Выигрыш B (y1,y2,y3)':<25} | {'v_нижн':>8} | {'v_верхн':>8}")
+    print("-"*110)
+    k = 0
+    while True:
+        k += 1
+        freqA[a] += 1
+        freqB[b] += 1
+        x_emp = freqA / k
+        y_emp = freqB / k
+        expA = C @ y_emp
+        expB = x_emp @ C
+        lower = np.max(expA)
+        upper = np.min(expB)
+        if k <= 20:
+            A_str = f"({expA[0]:5.2f}, {expA[1]:5.2f}, {expA[2]:5.2f})"
+            B_str = f"({expB[0]:5.2f}, {expB[1]:5.2f}, {expB[2]:5.2f})"
+            print(f"{k:4d} |     {a+1:3d}     |     {b+1:3d}     | {A_str:25} | {B_str:25} | {lower:8.4f} | {upper:8.4f}")
+        if k > 20 and k % report_interval == 0:
+            print(f"Шаг {k:8d}: нижняя = {lower:10.4f}, верхняя = {upper:10.4f}, разница = {abs(upper-lower):10.6f}")
+        if abs(upper - lower) <= eps:
+            print("-"*110)
+            print(f"Сходимость на шаге {k}, ε = {abs(upper-lower):.6f}")
+            break
+        a = np.argmax(expA)
+        b = np.argmin(expB)
+    x_final = freqA / k
+    y_final = freqB / k
+    v_final = (lower + upper) / 2
+    return x_final, y_final, v_final, k
+
+print("\nЧИСЛЕННЫЙ МЕТОД (ε=0.1)")
+x_num, y_num, v_num, steps = brown_robinson_auto(C, eps=0.1, report_interval=5000)
+
+# 
+print("\nМетод Брауна-Робинсона")
+print(f"Итераций: {steps}")
+print(f"Цена игры ≈ {v_num:.10f}")
+print(f"A* ≈ ({x_num[0]:.6f}, {x_num[1]:.6f}, {x_num[2]:.6f})")
+print(f"B* ≈ ({y_num[0]:.6f}, {y_num[1]:.6f}, {y_num[2]:.6f})")
+
+print("\nСРАВНЕНИЕ")
+print(f"Погрешность по цене: {abs(v_anal - v_num):.8f}")
+print(f"Погрешность A: max = {np.max(np.abs(x_anal - x_num)):.8f}")
+print(f"Погрешность B: max = {np.max(np.abs(y_anal - y_num)):.8f}")
