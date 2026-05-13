@@ -1,83 +1,121 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
-C = np.array([
+matrix = np.array([
     [9, 10, 13],
     [1, 18, 11],
     [17, 4, 0]
-], dtype=float)
+])
 
-# Аналитическое решение
-def analytical_solution(C):
-    m, n = C.shape
-    if m != n:
-        raise ValueError("Матрица должна быть квадратной")
+def analytical_method(C):
     C_inv = np.linalg.inv(C)
-    u = np.ones(m)
-    denom = u @ C_inv @ u
-    if denom == 0:
-        raise ValueError("Цена игры равна нулю")
-    v = 1.0 / denom
-    x = (u @ C_inv) / denom
-    y = (C_inv @ u) / denom
-    return x, y, v
+    total_sum = np.sum(C_inv)
+    v = 1 / total_sum 
+    
+    row_sums = np.sum(C_inv, axis=1)
+    x = row_sums / total_sum
+    col_sums = np.sum(C_inv, axis=0)
+    y = col_sums / total_sum
+    
+    return v, x, y
 
-x_anal, y_anal, v_anal = analytical_solution(C)
-
-
-print("АНАЛИТИЧЕСКОЕ РЕШЕНИЕ")
-print(f"Цена игры = {v_anal:.10f}")
-print(f"A* = ({x_anal[0]:.6f}, {x_anal[1]:.6f}, {x_anal[2]:.6f})")
-print(f"B* = ({y_anal[0]:.6f}, {y_anal[1]:.6f}, {y_anal[2]:.6f})")
-print()
-
-# Метод Брауна-Робинсона
-def brown_robinson_auto(C, eps=0.1, report_interval=1000):
+def solve_brown_robinson(C, target_eps, max_iter=10000):
     m, n = C.shape
-    freqA = np.zeros(m, dtype=int)
-    freqB = np.zeros(n, dtype=int)
-    a, b = 0, 0
-    print("="*110)
-    print(f"{'№ пп':>4} | {'Выбор A':>7} | {'Выбор B':>7} | {'Выигрыш A (x1,x2,x3)':<25} | {'Выигрыш B (y1,y2,y3)':<25} | {'v_нижн':>8} | {'v_верхн':>8}")
-    print("-"*110)
-    k = 0
-    while True:
+    
+    acc_win_A = [0.0, 0.0, 0.0]   
+    acc_loss_B = [0.0, 0.0, 0.0]  
+    counts_A = [0, 0, 0]  
+    counts_B = [0, 0, 0]  
+    
+    v_up_history = []   
+    v_low_history = []  
+    log = []
+
+    k = 1
+    curr_A = 0
+    curr_B = 0
+    epsilon = 1.0
+    
+    # Заголовок таблицы
+    header = f"{'№':<6} {'A':<6} {'B':<6} {'Выигрыш A (x1,x2,x3)':<25} {'Проигрыш B (y1,y2,y3)':<25} {'v_up':<8} {'v_low':<8}"
+    log.append(header)
+    log.append("-" * 90)
+    
+    while epsilon > target_eps and k <= max_iter:
+        counts_A[curr_A] += 1
+        counts_B[curr_B] += 1
+        
+        acc_win_A[0] += C[0][curr_B]
+        acc_win_A[1] += C[1][curr_B]
+        acc_win_A[2] += C[2][curr_B]
+        
+        acc_loss_B[0] += C[curr_A][0]
+        acc_loss_B[1] += C[curr_A][1]
+        acc_loss_B[2] += C[curr_A][2]
+    
+        v_up_k = max(acc_win_A) / k
+        v_low_k = min(acc_loss_B) / k
+        
+        v_up_history.append(v_up_k)
+        v_low_history.append(v_low_k)
+        
+        epsilon = min(v_up_history) - max(v_low_history)
+        
+        win_str = f"{int(acc_win_A[0])}, {int(acc_win_A[1])}, {int(acc_win_A[2])}"
+        loss_str = f"{int(acc_loss_B[0])}, {int(acc_loss_B[1])}, {int(acc_loss_B[2])}"
+        
+        row = f"{k:<6} x{curr_A+1:<5} y{curr_B+1:<5} {win_str:<25} {loss_str:<25} {v_up_k:<8.4f} {v_low_k:<8.4f}"
+        log.append(row)
+        
+        curr_A = acc_win_A.index(max(acc_win_A))
+        curr_B = acc_loss_B.index(min(acc_loss_B))
+        
         k += 1
-        freqA[a] += 1
-        freqB[b] += 1
-        x_emp = freqA / k
-        y_emp = freqB / k
-        expA = C @ y_emp
-        expB = x_emp @ C
-        lower = np.max(expA)
-        upper = np.min(expB)
-        if k <= 20:
-            A_str = f"({expA[0]:5.2f}, {expA[1]:5.2f}, {expA[2]:5.2f})"
-            B_str = f"({expB[0]:5.2f}, {expB[1]:5.2f}, {expB[2]:5.2f})"
-            print(f"{k:4d} |     {a+1:3d}     |     {b+1:3d}     | {A_str:25} | {B_str:25} | {lower:8.4f} | {upper:8.4f}")
-        if k > 20 and k % report_interval == 0:
-            print(f"Шаг {k:8d}: нижняя = {lower:10.4f}, верхняя = {upper:10.4f}, разница = {abs(upper-lower):10.6f}")
-        if abs(upper - lower) <= eps:
-            print("-"*110)
-            print(f"Сходимость на шаге {k}, ε = {abs(upper-lower):.6f}")
-            break
-        a = np.argmax(expA)
-        b = np.argmin(expB)
-    x_final = freqA / k
-    y_final = freqB / k
-    v_final = (lower + upper) / 2
-    return x_final, y_final, v_final, k
+    
+    steps = k - 1
+    x_strat = [round(c / steps, 4) for c in counts_A]
+    y_strat = [round(c / steps, 4) for c in counts_B]
+    
+    v_res = (min(v_up_history) + max(v_low_history)) / 2
+    
+    full_log = "\n".join(log)
+    with open("brown_robinson_log.txt", "w", encoding="utf-8") as f:
+        f.write(full_log)
+    
+    return v_res, x_strat, y_strat, v_up_history, v_low_history, steps
 
-print("\nЧИСЛЕННЫЙ МЕТОД (ε=0.1)")
-x_num, y_num, v_num, steps = brown_robinson_auto(C, eps=0.1, report_interval=5000)
+def print_comparison(analytical_v, analytical_x, analytical_y, 
+                     brown_v, brown_x, brown_y, iterations):
+ 
+    print("\n" + "-" * 70)
+    print("ПОГРЕШНОСТИ:")
+    print(f"  Цена игры:      |{analytical_v - brown_v:.4f}|")
+    print(f"  Количество итераций: {iterations}")
+def main():    
+    
+    print("АНАЛИТИЧЕСКИЙ МЕТОД")
+    v_analytical, x_analytical, y_analytical = analytical_method(matrix)
+    print(f"Цена игры: {v_analytical:.4f}")
+    print(f"Стратегия A: {[round(x,4) for x in x_analytical]}")
+    print(f"Стратегия B: {[round(y,4) for y in y_analytical]}")
+    
+    print("\nЧИСЛЕННЫЙ МЕТОД БРАУНА-РОБИНСОНА")
+    target_eps = 0.1
+    print(f"Целевая погрешность: ε = {target_eps}")
+    print("(первые итерации см. в файле brown_robinson_log.txt)")
+    
+    v_brown, x_brown, y_brown, v_up_hist, v_low_hist, iterations = solve_brown_robinson(
+        matrix, target_eps
+    )
+    
+    print(f"\nРЕЗУЛЬТАТ после {iterations} итераций:")
+    print(f"Цена игры: {v_brown:.4f}")
+    print(f"Стратегия A: {x_brown}")
+    print(f"Стратегия B: {y_brown}")
+    
+    # Сравнение
+    print_comparison(v_analytical, x_analytical, y_analytical, 
+                     v_brown, x_brown, y_brown, iterations)
 
-# 
-print("\nМетод Брауна-Робинсона")
-print(f"Итераций: {steps}")
-print(f"Цена игры ≈ {v_num:.10f}")
-print(f"A* ≈ ({x_num[0]:.6f}, {x_num[1]:.6f}, {x_num[2]:.6f})")
-print(f"B* ≈ ({y_num[0]:.6f}, {y_num[1]:.6f}, {y_num[2]:.6f})")
-
-print("\nСРАВНЕНИЕ")
-print(f"Погрешность по цене: {abs(v_anal - v_num):.8f}")
-print(f"Погрешность A: max = {np.max(np.abs(x_anal - x_num)):.8f}")
-print(f"Погрешность B: max = {np.max(np.abs(y_anal - y_num)):.8f}")
+if __name__ == "__main__":
+    main()
