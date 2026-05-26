@@ -1,4 +1,3 @@
-
 import numpy as np
 
 
@@ -45,13 +44,18 @@ class ContinuousGameSolver:
         
         return matrix, x_points, y_points
     
-    def solve_by_brown_robinson(self, matrix, max_iter=1000):
+    def solve_by_brown_robinson(self, matrix, max_iter=200, eps=1e-6):
         m, n = matrix.shape
         
         x_counts = np.zeros(m)
         y_counts = np.zeros(n)
         x_counts[0] = 1
         y_counts[0] = 1
+        
+        # Для отслеживания сходимости
+        prev_x_star = None
+        prev_y_star = None
+        consecutive_small_errors = 0
         
         for k in range(1, max_iter + 1):
             x_emp = x_counts / k
@@ -65,14 +69,32 @@ class ContinuousGameSolver:
             
             x_counts[best_i] += 1
             y_counts[best_j] += 1
+            
+            # Проверка критерия остановки на каждой итерации
+            x_star = x_counts / (k + 1)
+            y_star = y_counts / (k + 1)
+            
+            x_idx = np.argmax(x_star)
+            y_idx = np.argmax(y_star)
+            
+            if prev_x_star is not None and prev_y_star is not None:
+                error = abs(x_star[x_idx] - prev_x_star[prev_x_idx]) + abs(y_star[y_idx] - prev_y_star[prev_y_idx])
+                
+                if error < eps:
+                    consecutive_small_errors += 1
+                    if consecutive_small_errors >= 5:
+                        print(f"  Остановка на итерации {k}: ошибка < {eps} в течение 5 итераций подряд")
+                        return x_idx, y_idx, k
+                else:
+                    consecutive_small_errors = 0
+            
+            prev_x_star = x_star.copy()
+            prev_y_star = y_star.copy()
+            prev_x_idx = x_idx
+            prev_y_idx = y_idx
         
-        x_star = x_counts / (k + 1)
-        y_star = y_counts / (k + 1)
-        
-        x_idx = np.argmax(x_star)
-        y_idx = np.argmax(y_star)
-        
-        return x_idx, y_idx
+        print(f"  Достигнут максимум итераций ({max_iter})")
+        return x_idx, y_idx, max_iter
     
     def numerical_solution(self, max_N=12):
         results = []
@@ -80,18 +102,16 @@ class ContinuousGameSolver:
         for N in range(2, max_N + 1):
             matrix, x_points, y_points = self.create_payoff_matrix(N)
             
-            # Вывод матрицы
+            # Вывод всей матрицы
             print(f"\nN={N}")
             print("[")
-            for i in range(min(N+1, 6)):  # Выводим все строки
+            for i in range(N+1):
                 row_str = "["
                 for j in range(N+1):
                     row_str += f"{matrix[i,j]:7.3f}"
                     if j < N:
                         row_str += " "
                 row_str += "]"
-                if i < N:
-                    row_str += "  // строка " + str(i)
                 print(row_str)
             print("]")
             
@@ -122,18 +142,19 @@ class ContinuousGameSolver:
                 print(f"x={x_num:.3f} y={y_num:.3f} H={v_num:.3f}")
                 results.append({
                     'N': N, 'method': 'седловая точка',
-                    'x': x_num, 'y': y_num, 'v': v_num
+                    'x': x_num, 'y': y_num, 'v': v_num, 'iterations': None
                 })
             else:
-                x_idx, y_idx = self.solve_by_brown_robinson(matrix)
+                x_idx, y_idx, iterations = self.solve_by_brown_robinson(matrix)
                 x_num = x_points[x_idx]
                 y_num = y_points[y_idx]
                 v_num = matrix[x_idx, y_idx]
                 print(f"\nСедловой точки нет, решение методом Брауна-Робинсона:")
                 print(f"x={x_num:.3f} y={y_num:.3f} H={v_num:.3f}")
+                print(f"  Потребовалось итераций: {iterations}")
                 results.append({
                     'N': N, 'method': 'Брауна-Робинсона',
-                    'x': x_num, 'y': y_num, 'v': v_num
+                    'x': x_num, 'y': y_num, 'v': v_num, 'iterations': iterations
                 })
         
         return results
@@ -146,14 +167,17 @@ def main():
     
     x_ana, y_ana, v_ana = solver.analytical_solution()
     
-    numerical_results = solver.numerical_solution(max_N=12)
+    numerical_results = solver.numerical_solution(max_N=5)
     
-    print(f"\nАналитическое решение:    x* = {x_ana:.4f}, y* = {y_ana:.4f}, v = {v_ana:.4f}")
+    print(f"\n{'='*60}")
+    print(f"Аналитическое решение:    x* = {x_ana:.4f}, y* = {y_ana:.4f}, v = {v_ana:.4f}")
     
     best = numerical_results[-1]
     print(f"Численное решение (N={best['N']}): x* = {best['x']:.4f}, y* = {best['y']:.4f}, v = {best['v']:.4f}")
+    if best['iterations']:
+        print(f"  Итераций потребовалось: {best['iterations']}")
+    print(f"{'='*60}")
     
-
 
 if __name__ == "__main__":
     main()
