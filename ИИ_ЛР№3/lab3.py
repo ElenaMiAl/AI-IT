@@ -1,183 +1,120 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
+def x_func(t):
+    return np.sin(0.1 * t**3 - 0.2 * t**2 + t - 1)
+
+a = 0        
+b = 1          
+N = 20         
+
+t_pred_start = b
+t_pred_end = 2*b - a 
+
+p = 6          
+eta = 1      
+epochs = 4000  
+
+print(f"Интервал обучения: t ∈ [{a}, {b}], N = {N} точек")
+print(f"Интервал прогноза: t ∈ ({t_pred_start}, {t_pred_end}], N = {N} точек")
+print(f"Размер окна p = {p}, норма обучения η = {eta}, эпох = {epochs}")
 
 
-class ContinuousGameSolver:
-    
-    def __init__(self, a, b, c, d, e):
-        self.a = a
-        self.b = b
-        self.c = c
-        self.d = d
-        self.e = e
-        
-    def H(self, x, y):
-        return self.a*x**2 + self.b*y**2 + self.c*x*y + self.d*x + self.e*y
-    
-    def analytical_solution(self):
-        A1, B1, C1 = 2*self.a, self.c, -self.d
-        A2, B2, C2 = self.c, 2*self.b, -self.e
-        
-        det = A1*B2 - A2*B1
-        x_star = (C1*B2 - C2*B1) / det
-        y_star = (A1*C2 - A2*C1) / det
-        
-        x_star = max(0, min(1, x_star))
-        y_star = max(0, min(1, y_star))
-        
-        v_star = self.H(x_star, y_star)
-        
-        print(f"\nЯдро игры: H(x,y) = {self.a}·x² + {self.b}·y² + {self.c}·x·y + {self.d}·x + {self.e}·y")
-        print(f"\nОптимальная стратегия игрока A: x* = {x_star:.6f}")
-        print(f"Оптимальная стратегия игрока B: y* = {y_star:.6f}")
-        print(f"Цена игры: v = {v_star:.6f}")
-        
-        return x_star, y_star, v_star
-    
-    def create_payoff_matrix(self, N):
-        x_points = np.linspace(0, 1, N+1)
-        y_points = np.linspace(0, 1, N+1)
-        
-        matrix = np.zeros((N+1, N+1))
-        for i, x in enumerate(x_points):
-            for j, y in enumerate(y_points):
-                matrix[i, j] = self.H(x, y)
-        
-        return matrix, x_points, y_points
-    
-    def solve_by_brown_robinson(self, matrix, max_iter=200, eps=1e-6):
-        m, n = matrix.shape
-        
-        x_counts = np.zeros(m)
-        y_counts = np.zeros(n)
-        x_counts[0] = 1
-        y_counts[0] = 1
-        
-        # Для отслеживания сходимости
-        prev_x_star = None
-        prev_y_star = None
-        consecutive_small_errors = 0
-        
-        for k in range(1, max_iter + 1):
-            x_emp = x_counts / k
-            y_emp = y_counts / k
-            
-            expected_gains = np.dot(matrix, y_emp)
-            best_i = np.argmax(expected_gains)
-            
-            expected_losses = np.dot(x_emp, matrix)
-            best_j = np.argmin(expected_losses)
-            
-            x_counts[best_i] += 1
-            y_counts[best_j] += 1
-            
-            # Проверка критерия остановки на каждой итерации
-            x_star = x_counts / (k + 1)
-            y_star = y_counts / (k + 1)
-            
-            x_idx = np.argmax(x_star)
-            y_idx = np.argmax(y_star)
-            
-            if prev_x_star is not None and prev_y_star is not None:
-                error = abs(x_star[x_idx] - prev_x_star[prev_x_idx]) + abs(y_star[y_idx] - prev_y_star[prev_y_idx])
-                
-                if error < eps:
-                    consecutive_small_errors += 1
-                    if consecutive_small_errors >= 5:
-                        print(f"  Остановка на итерации {k}: ошибка < {eps} в течение 5 итераций подряд")
-                        return x_idx, y_idx, k
-                else:
-                    consecutive_small_errors = 0
-            
-            prev_x_star = x_star.copy()
-            prev_y_star = y_star.copy()
-            prev_x_idx = x_idx
-            prev_y_idx = y_idx
-        
-        print(f"  Достигнут максимум итераций ({max_iter})")
-        return x_idx, y_idx, max_iter
-    
-    def numerical_solution(self, max_N=12):
-        results = []
-        
-        for N in range(2, max_N + 1):
-            matrix, x_points, y_points = self.create_payoff_matrix(N)
-            
-            # Вывод всей матрицы
-            print(f"\nN={N}")
-            print("[")
-            for i in range(N+1):
-                row_str = "["
-                for j in range(N+1):
-                    row_str += f"{matrix[i,j]:7.3f}"
-                    if j < N:
-                        row_str += " "
-                row_str += "]"
-                print(row_str)
-            print("]")
-            
-            # Поиск седловой точки
-            row_mins = np.min(matrix, axis=1)
-            col_maxs = np.max(matrix, axis=0)
-            lower_price = np.max(row_mins)
-            upper_price = np.min(col_maxs)
-            
-            saddle_found = False
-            saddle_i, saddle_j = -1, -1
-            
-            for i in range(N+1):
-                for j in range(N+1):
-                    if abs(matrix[i,j] - row_mins[i]) < 1e-6 and abs(matrix[i,j] - col_maxs[j]) < 1e-6:
-                        if abs(lower_price - upper_price) < 1e-6:
-                            saddle_found = True
-                            saddle_i, saddle_j = i, j
-                            break
-                if saddle_found:
-                    break
-            
-            if saddle_found:
-                x_num = x_points[saddle_i]
-                y_num = y_points[saddle_j]
-                v_num = matrix[saddle_i, saddle_j]
-                print(f"\nЕсть седловая точка:")
-                print(f"x={x_num:.3f} y={y_num:.3f} H={v_num:.3f}")
-                results.append({
-                    'N': N, 'method': 'седловая точка',
-                    'x': x_num, 'y': y_num, 'v': v_num, 'iterations': None
-                })
-            else:
-                x_idx, y_idx, iterations = self.solve_by_brown_robinson(matrix)
-                x_num = x_points[x_idx]
-                y_num = y_points[y_idx]
-                v_num = matrix[x_idx, y_idx]
-                print(f"\nСедловой точки нет, решение методом Брауна-Робинсона:")
-                print(f"x={x_num:.3f} y={y_num:.3f} H={v_num:.3f}")
-                print(f"  Потребовалось итераций: {iterations}")
-                results.append({
-                    'N': N, 'method': 'Брауна-Робинсона',
-                    'x': x_num, 'y': y_num, 'v': v_num, 'iterations': iterations
-                })
-        
-        return results
+t_train = np.linspace(a, b, N)
+x_train = x_func(t_train)
 
+t_pred = np.linspace(t_pred_start, t_pred_end, N)
+x_true_pred = x_func(t_pred)
 
-def main():
-    a, b, c, d, e = -4, 2, 8, -4/5, -32/5
-    
-    solver = ContinuousGameSolver(a, b, c, d, e)
-    
-    x_ana, y_ana, v_ana = solver.analytical_solution()
-    
-    numerical_results = solver.numerical_solution(max_N=5)
-    
-    print(f"\n{'='*60}")
-    print(f"Аналитическое решение:    x* = {x_ana:.4f}, y* = {y_ana:.4f}, v = {v_ana:.4f}")
-    
-    best = numerical_results[-1]
-    print(f"Численное решение (N={best['N']}): x* = {best['x']:.4f}, y* = {best['y']:.4f}, v = {best['v']:.4f}")
-    if best['iterations']:
-        print(f"  Итераций потребовалось: {best['iterations']}")
-    print(f"{'='*60}")
-    
+print("\nИсходные данные")
+for i in range(5):
+    print(f"    t[{i}] = {t_train[i]:.4f}, x[{i}] = {x_train[i]:.6f}")
 
-if __name__ == "__main__":
-    main()
+X_train = [] 
+Y_train = []  
+
+for i in range(p, len(x_train)):
+    X_train.append(x_train[i-p:i])
+    Y_train.append(x_train[i])
+
+X_train = np.array(X_train)
+Y_train = np.array(Y_train)
+
+print(f"\nОбучающая выборка (скользящее окно p={p}):")
+print(f"    Количество образцов: {len(X_train)}")
+print(f"    Размер входа: {X_train.shape[1]}")
+w = np.zeros(p)
+errors = [] 
+
+for epoch in range(epochs):
+    epoch_error = 0
+    
+    for i in range(len(X_train)):
+    
+        y_pred = np.dot(w, X_train[i])
+        delta = Y_train[i] - y_pred
+        epoch_error += delta ** 2
+        w += eta * delta * X_train[i]
+    
+    errors.append(epoch_error)
+    
+    if epoch % 500 == 0:
+        print(f"Эпоха {epoch:4d}: ошибка = {epoch_error:.6f}")
+
+print(f"Обучение завершено!")
+print(f"Финальные веса: w = {[round(v, 4) for v in w]}")
+
+print("\nПрогнозирование")
+
+window = list(x_train[-p:])
+predictions = []
+
+for i in range(N):
+    pred = np.dot(w, window)
+    predictions.append(pred)
+    # Сдвигаем окно
+    window = window[1:] + [pred]
+
+print(f"Первые 5 прогнозов: {[round(v, 4) for v in predictions[:5]]}")
+print(f"Последние 5 прогнозов: {[round(v, 4) for v in predictions[-5:]]}")
+
+train_error = errors[-1]
+
+test_error = sum((predictions[i] - x_true_pred[i]) ** 2 for i in range(N))
+
+print(f"\nОшибки:")
+print(f"Суммарная квадратичная ошибка на обучении: E = {train_error:.6f}")
+print(f"Суммарная квадратичная ошибка на прогнозе: ε = {test_error:.6f}")
+
+print("\nПостроение графиков")
+
+plt.rcParams['font.size'] = 11
+plt.rcParams['font.family'] = 'serif'
+
+plt.figure(figsize=(14, 5))
+
+plt.subplot(1, 2, 1)
+t_continuous = np.linspace(a, b, 200)
+x_continuous = x_func(t_continuous)
+plt.plot(t_continuous, x_continuous, 'b-', linewidth=2, label='X(t)')
+plt.plot(t_train, x_train, 'ro', markersize=6, label='x (обучающие точки)')
+
+plt.xlabel('t')
+plt.ylabel('X(t)')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+
+plt.subplot(1, 2, 2)
+plt.plot(t_train, x_train, 'bo', markersize=6, label='Исходные данные')
+plt.plot(t_pred, x_true_pred, 'g-', linewidth=2, label='X(t) (истинная)')
+plt.plot(t_pred, predictions, 'r--', linewidth=2, markersize=4, label='Прогноз НС')
+plt.axvline(x=b, color='gray', linestyle='--', alpha=0.7, linewidth=1.5, label='Граница прогноза')
+
+plt.xlabel('t')
+plt.ylabel('X(t)')
+plt.legend()
+plt.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
